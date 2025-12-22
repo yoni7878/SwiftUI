@@ -1,28 +1,30 @@
--- SwiftHub Library v2.0
--- Modern UI library for Roblox scripts
--- Repository: https://github.com/yourusername/swifthub
+-- Swift Hub - Modular UI Framework
+-- Features: Easy tab creation, toggle buttons, sliders, keybinds, ESP system, and more
 
--- Core Services
+-- Services
+local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
-local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
+local CoreGui = game:GetService("CoreGui")
 
--- Library Initialization
+-- Player
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+local Camera = Workspace.CurrentCamera
+
+-- Swift Hub Framework
 local SwiftHub = {
-    Version = "2.0.0",
-    Theme = "Dark",
-    CurrentTab = nil,
-    Tabs = {},
-    Options = {},
-    Unloaded = false
-}
-
--- Default Themes
-SwiftHub.Themes = {
-    Dark = {
-        Background = Color3.fromRGB(20, 20, 25),
+    Config = {
+        Keybind = Enum.KeyCode.RightControl,
+        Open = false,
+        ChangingKeybind = false,
+        CurrentKeybindToChange = nil
+    },
+    
+    Themes = {
+        Background = Color3.fromRGB(15, 15, 20),
         Primary = Color3.fromRGB(0, 100, 255),
         Secondary = Color3.fromRGB(30, 30, 40),
         Accent = Color3.fromRGB(0, 170, 255),
@@ -33,335 +35,408 @@ SwiftHub.Themes = {
         Warning = Color3.fromRGB(255, 150, 0),
         Danger = Color3.fromRGB(255, 50, 50)
     },
-    Light = {
-        Background = Color3.fromRGB(240, 240, 245),
-        Primary = Color3.fromRGB(0, 120, 255),
-        Secondary = Color3.fromRGB(220, 220, 230),
-        Accent = Color3.fromRGB(0, 150, 255),
-        Text = Color3.fromRGB(30, 30, 40),
-        SubText = Color3.fromRGB(100, 100, 120),
-        Border = Color3.fromRGB(200, 200, 210),
-        Success = Color3.fromRGB(0, 180, 80),
-        Warning = Color3.fromRGB(230, 120, 0),
-        Danger = Color3.fromRGB(220, 40, 40)
-    }
+    
+    -- Modules storage
+    Tabs = {},
+    Elements = {},
+    Callbacks = {}
 }
 
--- Utility Functions
-function SwiftHub:Create(class, props)
-    local instance = Instance.new(class)
-    for prop, value in pairs(props) do
-        if prop ~= "Parent" then
-            if pcall(function() return instance[prop] end) then
-                instance[prop] = value
-            end
+-- Rainbow color generator
+SwiftHub.Rainbow = {
+    Hue = 0,
+    Update = function(self, speed)
+        self.Hue = (self.Hue + speed * 0.01) % 1
+        return Color3.fromHSV(self.Hue, 1, 1)
+    end
+}
+
+-- Keybind manager
+SwiftHub.Keybinds = {
+    Active = {},
+    Pressed = {},
+    
+    Bind = function(self, key, callback)
+        self.Active[key] = callback
+    end,
+    
+    Unbind = function(self, key)
+        self.Active[key] = nil
+    end
+}
+
+-- Drawing utilities
+SwiftHub.Drawing = {
+    Circle = function(properties)
+        local drawing = Drawing.new("Circle")
+        for prop, value in pairs(properties) do
+            drawing[prop] = value
         end
+        return drawing
+    end,
+    
+    Line = function(properties)
+        local drawing = Drawing.new("Line")
+        for prop, value in pairs(properties) do
+            drawing[prop] = value
+        end
+        return drawing
+    end,
+    
+    Text = function(properties)
+        local drawing = Drawing.new("Text")
+        for prop, value in pairs(properties) do
+            drawing[prop] = value
+        end
+        return drawing
     end
-    if props.Parent then
-        instance.Parent = props.Parent
+}
+
+-- Math utilities
+SwiftHub.Math = {
+    Clamp = function(value, min, max)
+        return math.max(min, math.min(max, value))
+    end,
+    
+    Lerp = function(a, b, t)
+        return a + (b - a) * SwiftHub.Math.Clamp(t, 0, 1)
+    end,
+    
+    Round = function(num, decimalPlaces)
+        local mult = 10^(decimalPlaces or 0)
+        return math.floor(num * mult + 0.5) / mult
     end
-    return instance
-end
+}
 
-function SwiftHub:Round(num, decimalPlaces)
-    local mult = 10^(decimalPlaces or 0)
-    return math.floor(num * mult + 0.5) / mult
-end
+-- ====================
+-- CORE UI FRAMEWORK
+-- ====================
 
--- Notification System
-function SwiftHub:Notify(options)
-    local notification = {
-        Title = options.Title or "Notification",
-        Content = options.Content or "",
-        SubContent = options.SubContent,
-        Duration = options.Duration or 5
+-- Create a new tab
+function SwiftHub:CreateTab(name)
+    if self.Tabs[name] then return self.Tabs[name] end
+    
+    local tabData = {
+        Name = name,
+        Elements = {},
+        Callbacks = {}
     }
     
-    -- Create notification UI
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "SwiftNotification"
-    screenGui.Parent = game:GetService("CoreGui")
-    
-    local frame = Instance.new("Frame")
-    frame.Name = "Notification"
-    frame.Size = UDim2.new(0, 300, 0, 120)
-    frame.Position = UDim2.new(1, 10, 1, -130)
-    frame.BackgroundColor3 = self.Themes[self.Theme].Secondary
-    frame.BorderSizePixel = 0
-    frame.Parent = screenGui
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = frame
-    
-    local title = Instance.new("TextLabel")
-    title.Name = "Title"
-    title.Size = UDim2.new(1, -20, 0, 30)
-    title.Position = UDim2.new(0, 10, 0, 10)
-    title.BackgroundTransparency = 1
-    title.Text = notification.Title
-    title.TextColor3 = self.Themes[self.Theme].Text
-    title.TextSize = 18
-    title.Font = Enum.Font.GothamBold
-    title.TextXAlignment = Enum.TextXAlignment.Left
-    title.Parent = frame
-    
-    local content = Instance.new("TextLabel")
-    content.Name = "Content"
-    content.Size = UDim2.new(1, -20, 0, 40)
-    content.Position = UDim2.new(0, 10, 0, 45)
-    content.BackgroundTransparency = 1
-    content.Text = notification.Content
-    content.TextColor3 = self.Themes[self.Theme].Text
-    content.TextSize = 14
-    content.Font = Enum.Font.Gotham
-    content.TextXAlignment = Enum.TextXAlignment.Left
-    content.TextYAlignment = Enum.TextYAlignment.Top
-    content.TextWrapped = true
-    content.Parent = frame
-    
-    -- Animate in
-    frame.Position = UDim2.new(1, 310, 1, -130)
-    TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-        Position = UDim2.new(1, 10, 1, -130)
-    }):Play()
-    
-    -- Auto-dismiss if duration is set
-    if notification.Duration then
-        task.spawn(function()
-            task.wait(notification.Duration)
-            TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                Position = UDim2.new(1, 310, 1, -130)
-            }):Play()
-            task.wait(0.3)
-            screenGui:Destroy()
-        end)
-    end
+    self.Tabs[name] = tabData
+    return tabData
 end
 
--- UI Element: Toggle
-local Toggle = {}
-Toggle.__index = Toggle
-
-function Toggle.new(name, options, parent)
-    local self = setmetatable({}, Toggle)
-    self.Name = name
-    self.Value = options.Default or false
-    self.Callback = options.Callback
-    self.Parent = parent
+-- Create a section (header) in tab
+function SwiftHub:CreateSection(parent, name)
+    local SectionFrame = Instance.new("Frame")
+    SectionFrame.Name = name .. "Section"
+    SectionFrame.Size = UDim2.new(1, 0, 0, 40)
+    SectionFrame.BackgroundTransparency = 1
+    SectionFrame.LayoutOrder = #parent:GetChildren()
+    SectionFrame.Parent = parent
     
-    -- Create UI
-    self.Container = Instance.new("Frame")
-    self.Container.Name = name .. "Toggle"
-    self.Container.Size = UDim2.new(1, 0, 0, 40)
-    self.Container.BackgroundTransparency = 1
-    self.Container.Parent = parent
+    local SectionLabel = Instance.new("TextLabel")
+    SectionLabel.Name = "Label"
+    SectionLabel.Size = UDim2.new(1, 0, 1, 0)
+    SectionLabel.BackgroundTransparency = 1
+    SectionLabel.Text = name
+    SectionLabel.TextColor3 = self.Themes.SubText
+    SectionLabel.TextSize = 14
+    SectionLabel.Font = Enum.Font.GothamSemibold
+    SectionLabel.TextXAlignment = Enum.TextXAlignment.Left
+    SectionLabel.Parent = SectionFrame
     
-    local label = Instance.new("TextLabel")
-    label.Name = "Label"
-    label.Size = UDim2.new(0.7, 0, 1, 0)
-    label.BackgroundTransparency = 1
-    label.Text = options.Title
-    label.TextColor3 = SwiftHub.Themes[SwiftHub.Theme].Text
-    label.TextSize = 16
-    label.Font = Enum.Font.GothamSemibold
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = self.Container
-    
-    local toggleFrame = Instance.new("Frame")
-    toggleFrame.Name = "Toggle"
-    toggleFrame.Size = UDim2.new(0, 50, 0, 24)
-    toggleFrame.Position = UDim2.new(1, -60, 0.5, -12)
-    toggleFrame.BackgroundColor3 = self.Value and SwiftHub.Themes[SwiftHub.Theme].Success or SwiftHub.Themes[SwiftHub.Theme].Secondary
-    toggleFrame.Parent = self.Container
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(1, 0)
-    corner.Parent = toggleFrame
-    
-    self.Dot = Instance.new("Frame")
-    self.Dot.Name = "Dot"
-    self.Dot.Size = UDim2.new(0, 18, 0, 18)
-    self.Dot.Position = UDim2.new(0, self.Value and 30 or 2, 0, 3)
-    self.Dot.BackgroundColor3 = SwiftHub.Themes[SwiftHub.Theme].Text
-    self.Dot.Parent = toggleFrame
-    
-    local dotCorner = Instance.new("UICorner")
-    dotCorner.CornerRadius = UDim.new(1, 0)
-    dotCorner.Parent = self.Dot
-    
-    local button = Instance.new("TextButton")
-    button.Name = "Button"
-    button.Size = UDim2.new(1, 0, 1, 0)
-    button.BackgroundTransparency = 1
-    button.Text = ""
-    button.Parent = self.Container
-    
-    button.MouseButton1Click:Connect(function()
-        self:SetValue(not self.Value)
-    end)
-    
-    return self
+    return SectionFrame
 end
 
-function Toggle:SetValue(value)
-    self.Value = value
-    TweenService:Create(self.Dot, TweenInfo.new(0.2), {
-        Position = UDim2.new(0, value and 30 or 2, 0, 3)
-    }):Play()
+-- Create a toggle button
+function SwiftHub:CreateToggle(parent, name, default, callback)
+    local ToggleFrame = Instance.new("Frame")
+    ToggleFrame.Name = name .. "Toggle"
+    ToggleFrame.Size = UDim2.new(1, 0, 0, 40)
+    ToggleFrame.BackgroundTransparency = 1
+    ToggleFrame.LayoutOrder = #parent:GetChildren()
+    ToggleFrame.Parent = parent
     
-    TweenService:Create(self.Dot.Parent, TweenInfo.new(0.2), {
-        BackgroundColor3 = value and SwiftHub.Themes[SwiftHub.Theme].Success or SwiftHub.Themes[SwiftHub.Theme].Secondary
-    }):Play()
+    local ToggleLabel = Instance.new("TextLabel")
+    ToggleLabel.Name = "Label"
+    ToggleLabel.Size = UDim2.new(0, 200, 1, 0)
+    ToggleLabel.BackgroundTransparency = 1
+    ToggleLabel.Text = name
+    ToggleLabel.TextColor3 = self.Themes.Text
+    ToggleLabel.TextSize = 16
+    ToggleLabel.Font = Enum.Font.GothamSemibold
+    ToggleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    ToggleLabel.Parent = ToggleFrame
     
-    if self.Callback then
-        self.Callback(value)
-    end
+    local ToggleButton = Instance.new("TextButton")
+    ToggleButton.Name = "Button"
+    ToggleButton.Size = UDim2.new(0, 40, 0, 20)
+    ToggleButton.Position = UDim2.new(1, -50, 0.5, -10)
+    ToggleButton.BackgroundColor3 = default and self.Themes.Success or self.Themes.Secondary
+    ToggleButton.Text = ""
+    ToggleButton.AutoButtonColor = false
+    ToggleButton.Parent = ToggleFrame
     
-    -- Update in options table
-    if SwiftHub.Options[self.Name] then
-        SwiftHub.Options[self.Name].Value = value
-    end
-end
-
-function Toggle:OnChanged(callback)
-    self.Callback = callback
-end
-
--- UI Element: Button
-local Button = {}
-Button.__index = Button
-
-function Button.new(options, parent)
-    local self = setmetatable({}, Button)
-    self.Title = options.Title
-    self.Callback = options.Callback
-    self.Parent = parent
+    local ToggleCorner = Instance.new("UICorner")
+    ToggleCorner.CornerRadius = UDim.new(1, 0)
+    ToggleCorner.Parent = ToggleButton
     
-    self.Button = Instance.new("TextButton")
-    self.Button.Name = options.Title .. "Button"
-    self.Button.Size = UDim2.new(1, 0, 0, 40)
-    self.Button.BackgroundColor3 = SwiftHub.Themes[SwiftHub.Theme].Secondary
-    self.Button.Text = options.Title
-    self.Button.TextColor3 = SwiftHub.Themes[SwiftHub.Theme].Text
-    self.Button.TextSize = 16
-    self.Button.Font = Enum.Font.GothamSemibold
-    self.Button.Parent = parent
+    local ToggleDot = Instance.new("Frame")
+    ToggleDot.Name = "Dot"
+    ToggleDot.Size = UDim2.new(0, 16, 0, 16)
+    ToggleDot.Position = UDim2.new(0, default and 22 or 2, 0, 2)
+    ToggleDot.BackgroundColor3 = self.Themes.Text
+    ToggleDot.Parent = ToggleButton
     
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 6)
-    corner.Parent = self.Button
+    local DotCorner = Instance.new("UICorner")
+    DotCorner.CornerRadius = UDim.new(1, 0)
+    DotCorner.Parent = ToggleDot
     
-    self.Button.MouseButton1Click:Connect(function()
-        if self.Callback then
-            self.Callback()
+    local state = default
+    
+    local function updateToggle()
+        TweenService:Create(ToggleDot, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            Position = UDim2.new(0, state and 22 or 2, 0, 2)
+        }):Play()
+        
+        TweenService:Create(ToggleButton, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            BackgroundColor3 = state and self.Themes.Success or self.Themes.Secondary
+        }):Play()
+        
+        if callback then
+            callback(state)
         end
+    end
+    
+    ToggleButton.MouseButton1Click:Connect(function()
+        state = not state
+        updateToggle()
     end)
     
-    -- Hover effects
-    self.Button.MouseEnter:Connect(function()
-        TweenService:Create(self.Button, TweenInfo.new(0.2), {
-            BackgroundColor3 = SwiftHub.Themes[SwiftHub.Theme].Primary
-        }):Play()
-    end)
+    updateToggle()
     
-    self.Button.MouseLeave:Connect(function()
-        TweenService:Create(self.Button, TweenInfo.new(0.2), {
-            BackgroundColor3 = SwiftHub.Themes[SwiftHub.Theme].Secondary
-        }):Play()
-    end)
+    -- Store element
+    local elementId = #self.Elements + 1
+    self.Elements[elementId] = {
+        Type = "Toggle",
+        Name = name,
+        Get = function() return state end,
+        Set = function(newState)
+            state = newState
+            updateToggle()
+        end,
+        Toggle = function()
+            state = not state
+            updateToggle()
+        end
+    }
     
-    return self
+    return self.Elements[elementId]
 end
 
--- UI Element: Slider
-local Slider = {}
-Slider.__index = Slider
+-- Create a toggle with keybind
+function SwiftHub:CreateToggleWithKeybind(parent, name, defaultState, defaultKey, callback)
+    local ToggleFrame = Instance.new("Frame")
+    ToggleFrame.Name = name .. "Toggle"
+    ToggleFrame.Size = UDim2.new(1, 0, 0, 40)
+    ToggleFrame.BackgroundTransparency = 1
+    ToggleFrame.LayoutOrder = #parent:GetChildren()
+    ToggleFrame.Parent = parent
+    
+    local ToggleLabel = Instance.new("TextLabel")
+    ToggleLabel.Name = "Label"
+    ToggleLabel.Size = UDim2.new(0, 200, 1, 0)
+    ToggleLabel.BackgroundTransparency = 1
+    ToggleLabel.Text = name
+    ToggleLabel.TextColor3 = self.Themes.Text
+    ToggleLabel.TextSize = 16
+    ToggleLabel.Font = Enum.Font.GothamSemibold
+    ToggleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    ToggleLabel.Parent = ToggleFrame
+    
+    local ToggleButton = Instance.new("TextButton")
+    ToggleButton.Name = "Button"
+    ToggleButton.Size = UDim2.new(0, 40, 0, 20)
+    ToggleButton.Position = UDim2.new(0.7, -20, 0.5, -10)
+    ToggleButton.BackgroundColor3 = defaultState and self.Themes.Success or self.Themes.Secondary
+    ToggleButton.Text = ""
+    ToggleButton.AutoButtonColor = false
+    ToggleButton.Parent = ToggleFrame
+    
+    local ToggleCorner = Instance.new("UICorner")
+    ToggleCorner.CornerRadius = UDim.new(1, 0)
+    ToggleCorner.Parent = ToggleButton
+    
+    local ToggleDot = Instance.new("Frame")
+    ToggleDot.Name = "Dot"
+    ToggleDot.Size = UDim2.new(0, 16, 0, 16)
+    ToggleDot.Position = UDim2.new(0, defaultState and 22 or 2, 0, 2)
+    ToggleDot.BackgroundColor3 = self.Themes.Text
+    ToggleDot.Parent = ToggleButton
+    
+    local DotCorner = Instance.new("UICorner")
+    DotCorner.CornerRadius = UDim.new(1, 0)
+    DotCorner.Parent = ToggleDot
+    
+    local KeybindButton = Instance.new("TextButton")
+    KeybindButton.Name = "Keybind"
+    KeybindButton.Size = UDim2.new(0, 60, 0, 20)
+    KeybindButton.Position = UDim2.new(1, -70, 0.5, -10)
+    KeybindButton.BackgroundColor3 = self.Themes.Secondary
+    KeybindButton.Text = tostring(defaultKey.Name):gsub("Enum.UserInputType.", "")
+    KeybindButton.TextColor3 = self.Themes.Text
+    KeybindButton.TextSize = 12
+    KeybindButton.Font = Enum.Font.Gotham
+    KeybindButton.Parent = ToggleFrame
+    
+    local KeybindCorner = Instance.new("UICorner")
+    KeybindCorner.CornerRadius = UDim.new(0, 4)
+    KeybindCorner.Parent = KeybindButton
+    
+    local state = defaultState
+    local key = defaultKey
+    
+    local function updateToggle()
+        TweenService:Create(ToggleDot, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            Position = UDim2.new(0, state and 22 or 2, 0, 2)
+        }):Play()
+        
+        TweenService:Create(ToggleButton, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            BackgroundColor3 = state and self.Themes.Success or self.Themes.Secondary
+        }):Play()
+        
+        if callback then
+            callback(state, key)
+        end
+    end
+    
+    local function updateKeybind(newKey)
+        key = newKey
+        KeybindButton.Text = tostring(key.Name):gsub("Enum.UserInputType.", "")
+        updateToggle()
+    end
+    
+    ToggleButton.MouseButton1Click:Connect(function()
+        state = not state
+        updateToggle()
+    end)
+    
+    KeybindButton.MouseButton1Click:Connect(function()
+        if self.Config.ChangingKeybind then
+            self.Config.ChangingKeybind = false
+            KeybindButton.BackgroundColor3 = self.Themes.Secondary
+            return
+        end
+        
+        self.Config.ChangingKeybind = true
+        self.Config.CurrentKeybindToChange = {
+            SetKey = function(newKey)
+                updateKeybind(newKey)
+            end
+        }
+        KeybindButton.BackgroundColor3 = self.Themes.Warning
+        KeybindButton.Text = "PRESS KEY..."
+    end)
+    
+    -- Bind the key
+    self.Keybinds:Bind(key, function()
+        state = not state
+        updateToggle()
+    end)
+    
+    updateToggle()
+    
+    -- Store element
+    local elementId = #self.Elements + 1
+    self.Elements[elementId] = {
+        Type = "ToggleWithKeybind",
+        Name = name,
+        GetState = function() return state end,
+        SetState = function(newState)
+            state = newState
+            updateToggle()
+        end,
+        GetKey = function() return key end,
+        SetKey = function(newKey)
+            updateKeybind(newKey)
+        end
+    }
+    
+    return self.Elements[elementId]
+end
 
-function Slider.new(name, options, parent)
-    local self = setmetatable({}, Slider)
-    self.Name = name
-    self.Value = options.Default or options.Min or 0
-    self.Min = options.Min or 0
-    self.Max = options.Max or 100
-    self.Rounding = options.Rounding or 1
-    self.Callback = options.Callback
-    self.Parent = parent
+-- Create a slider
+function SwiftHub:CreateSlider(parent, name, min, max, default, callback)
+    local SliderFrame = Instance.new("Frame")
+    SliderFrame.Name = name .. "Slider"
+    SliderFrame.Size = UDim2.new(1, 0, 0, 60)
+    SliderFrame.BackgroundTransparency = 1
+    SliderFrame.LayoutOrder = #parent:GetChildren()
+    SliderFrame.Parent = parent
     
-    self.Container = Instance.new("Frame")
-    self.Container.Name = name .. "Slider"
-    self.Container.Size = UDim2.new(1, 0, 0, 60)
-    self.Container.BackgroundTransparency = 1
-    self.Container.Parent = parent
+    local SliderLabel = Instance.new("TextLabel")
+    SliderLabel.Name = "Label"
+    SliderLabel.Size = UDim2.new(1, 0, 0, 20)
+    SliderLabel.BackgroundTransparency = 1
+    SliderLabel.Text = name .. ": " .. tostring(default)
+    SliderLabel.TextColor3 = self.Themes.Text
+    SliderLabel.TextSize = 16
+    SliderLabel.Font = Enum.Font.GothamSemibold
+    SliderLabel.TextXAlignment = Enum.TextXAlignment.Left
+    SliderLabel.Parent = SliderFrame
     
-    self.Label = Instance.new("TextLabel")
-    self.Label.Name = "Label"
-    self.Label.Size = UDim2.new(1, 0, 0, 20)
-    self.Label.BackgroundTransparency = 1
-    self.Label.Text = options.Title .. ": " .. tostring(self.Value)
-    self.Label.TextColor3 = SwiftHub.Themes[SwiftHub.Theme].Text
-    self.Label.TextSize = 16
-    self.Label.Font = Enum.Font.GothamSemibold
-    self.Label.TextXAlignment = Enum.TextXAlignment.Left
-    self.Label.Parent = self.Container
+    local SliderTrack = Instance.new("Frame")
+    SliderTrack.Name = "Track"
+    SliderTrack.Size = UDim2.new(1, 0, 0, 6)
+    SliderTrack.Position = UDim2.new(0, 0, 0, 30)
+    SliderTrack.BackgroundColor3 = self.Themes.Secondary
+    SliderTrack.Parent = SliderFrame
     
-    local track = Instance.new("Frame")
-    track.Name = "Track"
-    track.Size = UDim2.new(1, 0, 0, 6)
-    track.Position = UDim2.new(0, 0, 0, 35)
-    track.BackgroundColor3 = SwiftHub.Themes[SwiftHub.Theme].Secondary
-    track.Parent = self.Container
+    local TrackCorner = Instance.new("UICorner")
+    TrackCorner.CornerRadius = UDim.new(1, 0)
+    TrackCorner.Parent = SliderTrack
     
-    local trackCorner = Instance.new("UICorner")
-    trackCorner.CornerRadius = UDim.new(1, 0)
-    trackCorner.Parent = track
+    local SliderFill = Instance.new("Frame")
+    SliderFill.Name = "Fill"
+    SliderFill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+    SliderFill.BackgroundColor3 = self.Themes.Accent
+    SliderFill.Parent = SliderTrack
     
-    self.Fill = Instance.new("Frame")
-    self.Fill.Name = "Fill"
-    self.Fill.Size = UDim2.new((self.Value - self.Min) / (self.Max - self.Min), 0, 1, 0)
-    self.Fill.BackgroundColor3 = SwiftHub.Themes[SwiftHub.Theme].Accent
-    self.Fill.Parent = track
+    local FillCorner = Instance.new("UICorner")
+    FillCorner.CornerRadius = UDim.new(1, 0)
+    FillCorner.Parent = SliderFill
     
-    local fillCorner = Instance.new("UICorner")
-    fillCorner.CornerRadius = UDim.new(1, 0)
-    fillCorner.Parent = self.Fill
+    local SliderButton = Instance.new("TextButton")
+    SliderButton.Name = "Button"
+    SliderButton.Size = UDim2.new(0, 20, 0, 20)
+    SliderButton.Position = UDim2.new((default - min) / (max - min), -10, 0, -7)
+    SliderButton.BackgroundColor3 = self.Themes.Text
+    SliderButton.Text = ""
+    SliderButton.AutoButtonColor = false
+    SliderButton.Parent = SliderFrame
     
-    self.Thumb = Instance.new("TextButton")
-    self.Thumb.Name = "Thumb"
-    self.Thumb.Size = UDim2.new(0, 20, 0, 20)
-    self.Thumb.Position = UDim2.new((self.Value - self.Min) / (self.Max - self.Min), -10, 0, -7)
-    self.Thumb.BackgroundColor3 = SwiftHub.Themes[SwiftHub.Theme].Text
-    self.Thumb.Text = ""
-    self.Thumb.Parent = self.Container
+    local ButtonCorner = Instance.new("UICorner")
+    ButtonCorner.CornerRadius = UDim.new(1, 0)
+    ButtonCorner.Parent = SliderButton
     
-    local thumbCorner = Instance.new("UICorner")
-    thumbCorner.CornerRadius = UDim.new(1, 0)
-    thumbCorner.Parent = self.Thumb
-    
-    -- Drag functionality
     local dragging = false
+    local currentValue = default
     
-    local function updateValue(x)
-        local percent = math.clamp((x - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
-        local value = self.Min + (self.Max - self.Min) * percent
-        value = SwiftHub:Round(value, self.Rounding)
+    local function updateValue(value)
+        currentValue = math.clamp(value, min, max)
+        local percent = (currentValue - min) / (max - min)
         
-        self.Value = value
-        self.Fill.Size = UDim2.new(percent, 0, 1, 0)
-        self.Thumb.Position = UDim2.new(percent, -10, 0, -7)
-        self.Label.Text = options.Title .. ": " .. tostring(value)
+        SliderFill.Size = UDim2.new(percent, 0, 1, 0)
+        SliderButton.Position = UDim2.new(percent, -10, 0, -7)
+        SliderLabel.Text = name .. ": " .. string.format("%.0f", currentValue)
         
-        if self.Callback then
-            self.Callback(value)
-        end
-        
-        -- Update options table
-        if SwiftHub.Options[self.Name] then
-            SwiftHub.Options[self.Name].Value = value
+        if callback then
+            callback(currentValue)
         end
     end
     
-    self.Thumb.MouseButton1Down:Connect(function()
+    SliderButton.MouseButton1Down:Connect(function()
         dragging = true
     end)
     
@@ -371,429 +446,898 @@ function Slider.new(name, options, parent)
         end
     end)
     
-    track.MouseButton1Down:Connect(function(x, y)
-        updateValue(x)
-    end)
-    
-    game:GetService("UserInputService").InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement and dragging then
-            updateValue(input.Position.X)
-        end
-    end)
-    
-    return self
-end
-
-function Slider:SetValue(value)
-    value = math.clamp(value, self.Min, self.Max)
-    value = SwiftHub:Round(value, self.Rounding)
-    
-    self.Value = value
-    local percent = (value - self.Min) / (self.Max - self.Min)
-    self.Fill.Size = UDim2.new(percent, 0, 1, 0)
-    self.Thumb.Position = UDim2.new(percent, -10, 0, -7)
-    self.Label.Text = self.Label.Text:gsub(": .+$", ": " .. tostring(value))
-    
-    if self.Callback then
-        self.Callback(value)
-    end
-end
-
-function Slider:OnChanged(callback)
-    self.Callback = callback
-end
-
--- Tab Class
-local Tab = {}
-Tab.__index = Tab
-
-function Tab.new(title, icon, window)
-    local self = setmetatable({}, Tab)
-    self.Title = title
-    self.Icon = icon
-    self.Window = window
-    self.Elements = {}
-    
-    -- Create tab button
-    self.Button = Instance.new("TextButton")
-    self.Button.Name = title .. "Tab"
-    self.Button.Size = UDim2.new(0, window.Config.TabWidth, 0, 40)
-    self.Button.BackgroundColor3 = SwiftHub.Themes[SwiftHub.Theme].Secondary
-    self.Button.Text = icon .. " " .. title
-    self.Button.TextColor3 = SwiftHub.Themes[SwiftHub.Theme].SubText
-    self.Button.TextSize = 14
-    self.Button.Font = Enum.Font.GothamSemibold
-    self.Button.AutoButtonColor = false
-    self.Button.Parent = window.TabContainer
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 6)
-    corner.Parent = self.Button
-    
-    -- Create tab content
-    self.Content = Instance.new("ScrollingFrame")
-    self.Content.Name = title .. "Content"
-    self.Content.Size = UDim2.new(1, -40, 1, -120)
-    self.Content.Position = UDim2.new(0, 20, 0, 100)
-    self.Content.BackgroundTransparency = 1
-    self.Content.ScrollBarThickness = 3
-    self.Content.ScrollBarImageColor3 = SwiftHub.Themes[SwiftHub.Theme].Border
-    self.Content.Visible = false
-    self.Content.CanvasSize = UDim2.new(0, 0, 0, 0)
-    self.Content.Parent = window.MainFrame
-    
-    local list = Instance.new("UIListLayout")
-    list.SortOrder = Enum.SortOrder.LayoutOrder
-    list.Padding = UDim.new(0, 10)
-    list.Parent = self.Content
-    
-    list:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        self.Content.CanvasSize = UDim2.new(0, 0, 0, list.AbsoluteContentSize.Y)
-    end)
-    
-    -- Button click handler
-    self.Button.MouseButton1Click:Connect(function()
-        self.Window:SelectTab(self)
-    end)
-    
-    return self
-end
-
-function Tab:AddToggle(name, options)
-    local toggle = Toggle.new(name, options, self.Content)
-    self.Elements[#self.Elements + 1] = toggle
-    SwiftHub.Options[name] = {Type = "Toggle", Value = toggle.Value, Object = toggle}
-    return toggle
-end
-
-function Tab:AddButton(options)
-    local button = Button.new(options, self.Content)
-    self.Elements[#self.Elements + 1] = button
-    return button
-end
-
-function Tab:AddSlider(name, options)
-    local slider = Slider.new(name, options, self.Content)
-    self.Elements[#self.Elements + 1] = slider
-    SwiftHub.Options[name] = {Type = "Slider", Value = slider.Value, Object = slider}
-    return slider
-end
-
-function Tab:AddParagraph(options)
-    local container = Instance.new("Frame")
-    container.Name = "Paragraph"
-    container.Size = UDim2.new(1, 0, 0, 60)
-    container.BackgroundTransparency = 1
-    container.Parent = self.Content
-    
-    local title = Instance.new("TextLabel")
-    title.Name = "Title"
-    title.Size = UDim2.new(1, 0, 0, 20)
-    title.BackgroundTransparency = 1
-    title.Text = options.Title
-    title.TextColor3 = SwiftHub.Themes[SwiftHub.Theme].Text
-    title.TextSize = 16
-    title.Font = Enum.Font.GothamBold
-    title.TextXAlignment = Enum.TextXAlignment.Left
-    title.Parent = container
-    
-    local content = Instance.new("TextLabel")
-    content.Name = "Content"
-    content.Size = UDim2.new(1, 0, 0, 40)
-    content.Position = UDim2.new(0, 0, 0, 20)
-    content.BackgroundTransparency = 1
-    content.Text = options.Content
-    content.TextColor3 = SwiftHub.Themes[SwiftHub.Theme].SubText
-    content.TextSize = 14
-    content.Font = Enum.Font.Gotham
-    content.TextXAlignment = Enum.TextXAlignment.Left
-    content.TextYAlignment = Enum.TextYAlignment.Top
-    content.TextWrapped = true
-    content.Parent = container
-    
-    self.Elements[#self.Elements + 1] = container
-    return container
-end
-
--- Window Class
-local Window = {}
-Window.__index = Window
-
-function Window:CreateWindow(config)
-    local self = setmetatable({}, Window)
-    self.Config = config
-    self.Tabs = {}
-    
-    -- Apply theme
-    if config.Theme then
-        SwiftHub.Theme = config.Theme
-    end
-    
-    -- Create screen GUI
-    self.ScreenGui = Instance.new("ScreenGui")
-    self.ScreenGui.Name = "SwiftHub"
-    self.ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    self.ScreenGui.Parent = game:GetService("CoreGui")
-    
-    -- Create main frame
-    self.MainFrame = Instance.new("Frame")
-    self.MainFrame.Name = "MainFrame"
-    self.MainFrame.Size = config.Size or UDim2.new(0, 580, 0, 460)
-    self.MainFrame.Position = UDim2.new(0.5, -self.MainFrame.Size.X.Offset/2, 0.5, -self.MainFrame.Size.Y.Offset/2)
-    self.MainFrame.BackgroundColor3 = SwiftHub.Themes[SwiftHub.Theme].Background
-    self.MainFrame.BackgroundTransparency = 0.1
-    self.MainFrame.BorderSizePixel = 0
-    self.MainFrame.Visible = false
-    self.MainFrame.Parent = self.ScreenGui
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = self.MainFrame
-    
-    -- Header
-    local header = Instance.new("Frame")
-    header.Name = "Header"
-    header.Size = UDim2.new(1, 0, 0, 60)
-    header.BackgroundTransparency = 1
-    header.Parent = self.MainFrame
-    
-    local title = Instance.new("TextLabel")
-    title.Name = "Title"
-    title.Size = UDim2.new(1, -100, 0, 30)
-    title.Position = UDim2.new(0, 20, 0, 10)
-    title.BackgroundTransparency = 1
-    title.Text = config.Title or "Swift Hub"
-    title.TextColor3 = SwiftHub.Themes[SwiftHub.Theme].Accent
-    title.TextSize = 24
-    title.Font = Enum.Font.GothamBold
-    title.TextXAlignment = Enum.TextXAlignment.Left
-    title.Parent = header
-    
-    local subtitle = Instance.new("TextLabel")
-    subtitle.Name = "Subtitle"
-    subtitle.Size = UDim2.new(1, -100, 0, 20)
-    subtitle.Position = UDim2.new(0, 20, 0, 35)
-    subtitle.BackgroundTransparency = 1
-    subtitle.Text = config.SubTitle or "v" .. SwiftHub.Version
-    subtitle.TextColor3 = SwiftHub.Themes[SwiftHub.Theme].SubText
-    subtitle.TextSize = 14
-    subtitle.Font = Enum.Font.Gotham
-    subtitle.TextXAlignment = Enum.TextXAlignment.Left
-    subtitle.Parent = header
-    
-    -- Close button
-    local closeBtn = Instance.new("TextButton")
-    closeBtn.Name = "Close"
-    closeBtn.Size = UDim2.new(0, 30, 0, 30)
-    closeBtn.Position = UDim2.new(1, -40, 0, 15)
-    closeBtn.BackgroundColor3 = SwiftHub.Themes[SwiftHub.Theme].Secondary
-    closeBtn.Text = "×"
-    closeBtn.TextColor3 = SwiftHub.Themes[SwiftHub.Theme].Text
-    closeBtn.TextSize = 24
-    closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.Parent = header
-    
-    local closeCorner = Instance.new("UICorner")
-    closeCorner.CornerRadius = UDim.new(1, 0)
-    closeCorner.Parent = closeBtn
-    
-    closeBtn.MouseButton1Click:Connect(function()
-        self:Destroy()
-    end)
-    
-    -- Tab container
-    self.TabContainer = Instance.new("Frame")
-    self.TabContainer.Name = "TabContainer"
-    self.TabContainer.Size = UDim2.new(0, config.TabWidth or 160, 1, -120)
-    self.TabContainer.Position = UDim2.new(0, 10, 0, 70)
-    self.TabContainer.BackgroundTransparency = 1
-    self.TabContainer.Parent = self.MainFrame
-    
-    local tabList = Instance.new("UIListLayout")
-    tabList.SortOrder = Enum.SortOrder.LayoutOrder
-    tabList.Padding = UDim.new(0, 5)
-    tabList.Parent = self.TabContainer
-    
-    -- Make draggable
-    self:Draggable(header)
-    
-    -- Minimize keybind
-    if config.MinimizeKey then
-        UserInputService.InputBegan:Connect(function(input, gameProcessed)
-            if not gameProcessed and input.KeyCode == config.MinimizeKey then
-                self.MainFrame.Visible = not self.MainFrame.Visible
-            end
-        end)
-    end
-    
-    return self
-end
-
-function Window:AddTab(options)
-    local tab = Tab.new(options.Title, options.Icon or "", self)
-    self.Tabs[#self.Tabs + 1] = tab
-    
-    if #self.Tabs == 1 then
-        self:SelectTab(tab)
-    end
-    
-    return tab
-end
-
-function Window:SelectTab(tab)
-    for _, t in ipairs(self.Tabs) do
-        t.Content.Visible = false
-        t.Button.BackgroundColor3 = SwiftHub.Themes[SwiftHub.Theme].Secondary
-        t.Button.TextColor3 = SwiftHub.Themes[SwiftHub.Theme].SubText
-    end
-    
-    tab.Content.Visible = true
-    tab.Button.BackgroundColor3 = SwiftHub.Themes[SwiftHub.Theme].Primary
-    tab.Button.TextColor3 = SwiftHub.Themes[SwiftHub.Theme].Text
-    
-    SwiftHub.CurrentTab = tab
-end
-
-function Window:Draggable(frame)
-    local dragging = false
-    local dragInput, dragStart, startPos
-    
-    frame.InputBegan:Connect(function(input)
+    SliderFrame.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = true
-            dragStart = input.Position
-            startPos = self.MainFrame.Position
-            
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                end
-            end)
+            local percent = (input.Position.X - SliderTrack.AbsolutePosition.X) / SliderTrack.AbsoluteSize.X
+            updateValue(min + (max - min) * math.clamp(percent, 0, 1))
         end
     end)
     
-    frame.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement then
-            dragInput = input
+    Mouse.Move:Connect(function()
+        if dragging then
+            local percent = (Mouse.X - SliderTrack.AbsolutePosition.X) / SliderTrack.AbsoluteSize.X
+            updateValue(min + (max - min) * math.clamp(percent, 0, 1))
         end
     end)
     
-    UserInputService.InputChanged:Connect(function(input)
-        if input == dragInput and dragging then
-            local delta = input.Position - dragStart
-            self.MainFrame.Position = UDim2.new(
-                startPos.X.Scale,
-                startPos.X.Offset + delta.X,
-                startPos.Y.Scale,
-                startPos.Y.Offset + delta.Y
+    updateValue(default)
+    
+    -- Store element
+    local elementId = #self.Elements + 1
+    self.Elements[elementId] = {
+        Type = "Slider",
+        Name = name,
+        Get = function() return currentValue end,
+        Set = function(value)
+            updateValue(value)
+        end
+    }
+    
+    return self.Elements[elementId]
+end
+
+-- Create a button
+function SwiftHub:CreateButton(parent, name, callback)
+    local ButtonFrame = Instance.new("Frame")
+    ButtonFrame.Name = name .. "Button"
+    ButtonFrame.Size = UDim2.new(1, 0, 0, 40)
+    ButtonFrame.BackgroundTransparency = 1
+    ButtonFrame.LayoutOrder = #parent:GetChildren()
+    ButtonFrame.Parent = parent
+    
+    local Button = Instance.new("TextButton")
+    Button.Name = "Button"
+    Button.Size = UDim2.new(0.5, 0, 1, 0)
+    Button.Position = UDim2.new(0.25, 0, 0, 0)
+    Button.BackgroundColor3 = self.Themes.Primary
+    Button.Text = name
+    Button.TextColor3 = self.Themes.Text
+    Button.TextSize = 16
+    Button.Font = Enum.Font.GothamSemibold
+    Button.AutoButtonColor = false
+    Button.Parent = ButtonFrame
+    
+    local ButtonCorner = Instance.new("UICorner")
+    ButtonCorner.CornerRadius = UDim.new(0, 6)
+    ButtonCorner.Parent = Button
+    
+    Button.MouseButton1Click:Connect(function()
+        if callback then
+            callback()
+        end
+    end)
+    
+    Button.MouseEnter:Connect(function()
+        TweenService:Create(Button, TweenInfo.new(0.2), {
+            BackgroundColor3 = Color3.fromRGB(
+                math.floor(self.Themes.Primary.R * 255 * 1.2),
+                math.floor(self.Themes.Primary.G * 255 * 1.2),
+                math.floor(self.Themes.Primary.B * 255 * 1.2)
             )
-        end
+        }):Play()
     end)
-end
-
-function Window:Destroy()
-    self.ScreenGui:Destroy()
-    SwiftHub.Unloaded = true
-end
-
-function Window:Dialog(options)
-    local dialog = Instance.new("Frame")
-    dialog.Name = "Dialog"
-    dialog.Size = UDim2.new(0, 300, 0, 200)
-    dialog.Position = UDim2.new(0.5, -150, 0.5, -100)
-    dialog.BackgroundColor3 = SwiftHub.Themes[SwiftHub.Theme].Secondary
-    dialog.BorderSizePixel = 0
-    dialog.Parent = self.MainFrame
     
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = dialog
+    Button.MouseLeave:Connect(function()
+        TweenService:Create(Button, TweenInfo.new(0.2), {
+            BackgroundColor3 = self.Themes.Primary
+        }):Play()
+    end)
     
-    local title = Instance.new("TextLabel")
-    title.Name = "Title"
-    title.Size = UDim2.new(1, -20, 0, 40)
-    title.Position = UDim2.new(0, 10, 0, 10)
-    title.BackgroundTransparency = 1
-    title.Text = options.Title
-    title.TextColor3 = SwiftHub.Themes[SwiftHub.Theme].Text
-    title.TextSize = 18
-    title.Font = Enum.Font.GothamBold
-    title.TextXAlignment = Enum.TextXAlignment.Left
-    title.Parent = dialog
-    
-    local content = Instance.new("TextLabel")
-    content.Name = "Content"
-    content.Size = UDim2.new(1, -20, 0, 80)
-    content.Position = UDim2.new(0, 10, 0, 60)
-    content.BackgroundTransparency = 1
-    content.Text = options.Content
-    content.TextColor3 = SwiftHub.Themes[SwiftHub.Theme].Text
-    content.TextSize = 14
-    content.Font = Enum.Font.Gotham
-    content.TextXAlignment = Enum.TextXAlignment.Left
-    content.TextYAlignment = Enum.TextYAlignment.Top
-    content.TextWrapped = true
-    content.Parent = dialog
-    
-    local buttonContainer = Instance.new("Frame")
-    buttonContainer.Name = "Buttons"
-    buttonContainer.Size = UDim2.new(1, -20, 0, 40)
-    buttonContainer.Position = UDim2.new(0, 10, 1, -50)
-    buttonContainer.BackgroundTransparency = 1
-    buttonContainer.Parent = dialog
-    
-    local buttonList = Instance.new("UIListLayout")
-    buttonList.FillDirection = Enum.FillDirection.Horizontal
-    buttonList.HorizontalAlignment = Enum.HorizontalAlignment.Right
-    buttonList.SortOrder = Enum.SortOrder.LayoutOrder
-    buttonList.Padding = UDim.new(0, 10)
-    buttonList.Parent = buttonContainer
-    
-    for i, btnOptions in ipairs(options.Buttons) do
-        local btn = Instance.new("TextButton")
-        btn.Name = btnOptions.Title
-        btn.Size = UDim2.new(0, 80, 0, 30)
-        btn.BackgroundColor3 = i == 1 and SwiftHub.Themes[SwiftHub.Theme].Primary or SwiftHub.Themes[SwiftHub.Theme].Secondary
-        btn.Text = btnOptions.Title
-        btn.TextColor3 = SwiftHub.Themes[SwiftHub.Theme].Text
-        btn.TextSize = 14
-        btn.Font = Enum.Font.GothamSemibold
-        btn.LayoutOrder = i
-        btn.Parent = buttonContainer
-        
-        local btnCorner = Instance.new("UICorner")
-        btnCorner.CornerRadius = UDim.new(0, 6)
-        btnCorner.Parent = btn
-        
-        btn.MouseButton1Click:Connect(function()
-            dialog:Destroy()
-            if btnOptions.Callback then
-                btnOptions.Callback()
+    -- Store element
+    local elementId = #self.Elements + 1
+    self.Elements[elementId] = {
+        Type = "Button",
+        Name = name,
+        Fire = function()
+            if callback then
+                callback()
             end
+        end
+    }
+    
+    return self.Elements[elementId]
+end
+
+-- Create a keybind button
+function SwiftHub:CreateKeybind(parent, name, defaultKey, callback)
+    local KeybindFrame = Instance.new("Frame")
+    KeybindFrame.Name = name .. "Keybind"
+    KeybindFrame.Size = UDim2.new(1, 0, 0, 40)
+    KeybindFrame.BackgroundTransparency = 1
+    KeybindFrame.LayoutOrder = #parent:GetChildren()
+    KeybindFrame.Parent = parent
+    
+    local KeybindLabel = Instance.new("TextLabel")
+    KeybindLabel.Name = "Label"
+    KeybindLabel.Size = UDim2.new(0, 200, 1, 0)
+    KeybindLabel.BackgroundTransparency = 1
+    KeybindLabel.Text = name
+    KeybindLabel.TextColor3 = self.Themes.Text
+    KeybindLabel.TextSize = 16
+    KeybindLabel.Font = Enum.Font.GothamSemibold
+    KeybindLabel.TextXAlignment = Enum.TextXAlignment.Left
+    KeybindLabel.Parent = KeybindFrame
+    
+    local KeybindButton = Instance.new("TextButton")
+    KeybindButton.Name = "Button"
+    KeybindButton.Size = UDim2.new(0, 80, 0, 30)
+    KeybindButton.Position = UDim2.new(1, -90, 0.5, -15)
+    KeybindButton.BackgroundColor3 = self.Themes.Secondary
+    KeybindButton.Text = tostring(defaultKey.Name):gsub("Enum.KeyCode.", "")
+    KeybindButton.TextColor3 = self.Themes.Text
+    KeybindButton.TextSize = 14
+    KeybindButton.Font = Enum.Font.Gotham
+    KeybindButton.Parent = KeybindFrame
+    
+    local ButtonCorner = Instance.new("UICorner")
+    ButtonCorner.CornerRadius = UDim.new(0, 6)
+    ButtonCorner.Parent = KeybindButton
+    
+    local function updateKeybind(key)
+        KeybindButton.Text = tostring(key.Name):gsub("Enum.KeyCode.", "")
+        if callback then
+            callback(key)
+        end
+    end
+    
+    KeybindButton.MouseButton1Click:Connect(function()
+        if self.Config.ChangingKeybind then
+            self.Config.ChangingKeybind = false
+            KeybindButton.BackgroundColor3 = self.Themes.Secondary
+            return
+        end
+        
+        self.Config.ChangingKeybind = true
+        self.Config.CurrentKeybindToChange = {
+            SetKey = function(key)
+                updateKeybind(key)
+            end
+        }
+        KeybindButton.BackgroundColor3 = self.Themes.Warning
+        KeybindButton.Text = "PRESS KEY..."
+    end)
+    
+    updateKeybind(defaultKey)
+    
+    -- Store element
+    local elementId = #self.Elements + 1
+    self.Elements[elementId] = {
+        Type = "Keybind",
+        Name = name,
+        Get = function() return defaultKey end,
+        Set = function(key)
+            updateKeybind(key)
+        end
+    }
+    
+    return self.Elements[elementId]
+end
+
+-- Create a label
+function SwiftHub:CreateLabel(parent, text)
+    local LabelFrame = Instance.new("Frame")
+    LabelFrame.Name = "LabelFrame"
+    LabelFrame.Size = UDim2.new(1, 0, 0, 30)
+    LabelFrame.BackgroundTransparency = 1
+    LabelFrame.LayoutOrder = #parent:GetChildren()
+    LabelFrame.Parent = parent
+    
+    local Label = Instance.new("TextLabel")
+    Label.Name = "Label"
+    Label.Size = UDim2.new(1, 0, 1, 0)
+    Label.BackgroundTransparency = 1
+    Label.Text = text
+    Label.TextColor3 = self.Themes.SubText
+    Label.TextSize = 14
+    Label.Font = Enum.Font.Gotham
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.TextYAlignment = Enum.TextYAlignment.Center
+    Label.TextWrapped = true
+    Label.Parent = LabelFrame
+    
+    -- Store element
+    local elementId = #self.Elements + 1
+    self.Elements[elementId] = {
+        Type = "Label",
+        Text = text,
+        SetText = function(newText)
+            Label.Text = newText
+        end
+    }
+    
+    return self.Elements[elementId]
+end
+
+-- Create a dropdown
+function SwiftHub:CreateDropdown(parent, name, options, default, callback)
+    local DropdownFrame = Instance.new("Frame")
+    DropdownFrame.Name = name .. "Dropdown"
+    DropdownFrame.Size = UDim2.new(1, 0, 0, 40)
+    DropdownFrame.BackgroundTransparency = 1
+    DropdownFrame.LayoutOrder = #parent:GetChildren()
+    DropdownFrame.ClipsDescendants = true
+    DropdownFrame.Parent = parent
+    
+    local DropdownLabel = Instance.new("TextLabel")
+    DropdownLabel.Name = "Label"
+    DropdownLabel.Size = UDim2.new(0, 200, 1, 0)
+    DropdownLabel.BackgroundTransparency = 1
+    DropdownLabel.Text = name
+    DropdownLabel.TextColor3 = self.Themes.Text
+    DropdownLabel.TextSize = 16
+    DropdownLabel.Font = Enum.Font.GothamSemibold
+    DropdownLabel.TextXAlignment = Enum.TextXAlignment.Left
+    DropdownLabel.Parent = DropdownFrame
+    
+    local DropdownButton = Instance.new("TextButton")
+    DropdownButton.Name = "Button"
+    DropdownButton.Size = UDim2.new(0, 150, 0, 30)
+    DropdownButton.Position = UDim2.new(1, -160, 0.5, -15)
+    DropdownButton.BackgroundColor3 = self.Themes.Secondary
+    DropdownButton.Text = default
+    DropdownButton.TextColor3 = self.Themes.Text
+    DropdownButton.TextSize = 14
+    DropdownButton.Font = Enum.Font.Gotham
+    DropdownButton.AutoButtonColor = false
+    DropdownButton.Parent = DropdownFrame
+    
+    local ButtonCorner = Instance.new("UICorner")
+    ButtonCorner.CornerRadius = UDim.new(0, 6)
+    ButtonCorner.Parent = DropdownButton
+    
+    local OptionsFrame = Instance.new("Frame")
+    OptionsFrame.Name = "Options"
+    OptionsFrame.Size = UDim2.new(1, 0, 0, 0)
+    OptionsFrame.Position = UDim2.new(0, 0, 1, 5)
+    OptionsFrame.BackgroundColor3 = self.Themes.Secondary
+    OptionsFrame.Visible = false
+    OptionsFrame.Parent = DropdownFrame
+    
+    local OptionsCorner = Instance.new("UICorner")
+    OptionsCorner.CornerRadius = UDim.new(0, 6)
+    OptionsCorner.Parent = OptionsFrame
+    
+    local OptionsList = Instance.new("UIListLayout")
+    OptionsList.SortOrder = Enum.SortOrder.LayoutOrder
+    OptionsList.Parent = OptionsFrame
+    
+    local open = false
+    local selected = default
+    
+    local function toggleOptions()
+        open = not open
+        
+        if open then
+            OptionsFrame.Visible = true
+            TweenService:Create(OptionsFrame, TweenInfo.new(0.3), {
+                Size = UDim2.new(1, 0, 0, #options * 30)
+            }):Play()
+        else
+            TweenService:Create(OptionsFrame, TweenInfo.new(0.3), {
+                Size = UDim2.new(1, 0, 0, 0)
+            }):Play()
+            wait(0.3)
+            OptionsFrame.Visible = false
+        end
+    end
+    
+    local function selectOption(option)
+        selected = option
+        DropdownButton.Text = option
+        toggleOptions()
+        
+        if callback then
+            callback(option)
+        end
+    end
+    
+    DropdownButton.MouseButton1Click:Connect(toggleOptions)
+    
+    -- Create option buttons
+    for _, option in ipairs(options) do
+        local OptionButton = Instance.new("TextButton")
+        OptionButton.Name = option
+        OptionButton.Size = UDim2.new(1, 0, 0, 30)
+        OptionButton.BackgroundColor3 = self.Themes.Secondary
+        OptionButton.Text = option
+        OptionButton.TextColor3 = self.Themes.Text
+        OptionButton.TextSize = 14
+        OptionButton.Font = Enum.Font.Gotham
+        OptionButton.AutoButtonColor = false
+        OptionButton.LayoutOrder = _
+        OptionButton.Parent = OptionsFrame
+        
+        OptionButton.MouseButton1Click:Connect(function()
+            selectOption(option)
+        end)
+        
+        OptionButton.MouseEnter:Connect(function()
+            TweenService:Create(OptionButton, TweenInfo.new(0.2), {
+                BackgroundColor3 = self.Themes.Primary
+            }):Play()
+        end)
+        
+        OptionButton.MouseLeave:Connect(function()
+            TweenService:Create(OptionButton, TweenInfo.new(0.2), {
+                BackgroundColor3 = self.Themes.Secondary
+            }):Play()
         end)
     end
     
-    return dialog
+    -- Store element
+    local elementId = #self.Elements + 1
+    self.Elements[elementId] = {
+        Type = "Dropdown",
+        Name = name,
+        Get = function() return selected end,
+        Set = function(option)
+            selectOption(option)
+        end,
+        Options = options
+    }
+    
+    return self.Elements[elementId]
 end
 
--- Main Library Function
-function SwiftHub:CreateWindow(config)
-    local window = Window:CreateWindow(config)
-    SwiftHub.CurrentWindow = window
-    window.MainFrame.Visible = true
+-- Create a color picker
+function SwiftHub:CreateColorPicker(parent, name, defaultColor, callback)
+    local ColorFrame = Instance.new("Frame")
+    ColorFrame.Name = name .. "Color"
+    ColorFrame.Size = UDim2.new(1, 0, 0, 40)
+    ColorFrame.BackgroundTransparency = 1
+    ColorFrame.LayoutOrder = #parent:GetChildren()
+    ColorFrame.Parent = parent
     
-    -- Send welcome notification
-    task.spawn(function()
-        task.wait(0.5)
-        self:Notify({
-            Title = "Swift Hub",
-            Content = "Library loaded successfully!",
-            Duration = 3
-        })
+    local ColorLabel = Instance.new("TextLabel")
+    ColorLabel.Name = "Label"
+    ColorLabel.Size = UDim2.new(0, 200, 1, 0)
+    ColorLabel.BackgroundTransparency = 1
+    ColorLabel.Text = name
+    ColorLabel.TextColor3 = self.Themes.Text
+    ColorLabel.TextSize = 16
+    ColorLabel.Font = Enum.Font.GothamSemibold
+    ColorLabel.TextXAlignment = Enum.TextXAlignment.Left
+    ColorLabel.Parent = ColorFrame
+    
+    local ColorButton = Instance.new("TextButton")
+    ColorButton.Name = "Button"
+    ColorButton.Size = UDim2.new(0, 60, 0, 30)
+    ColorButton.Position = UDim2.new(1, -70, 0.5, -15)
+    ColorButton.BackgroundColor3 = defaultColor
+    ColorButton.Text = ""
+    ColorButton.AutoButtonColor = false
+    ColorButton.Parent = ColorFrame
+    
+    local ButtonCorner = Instance.new("UICorner")
+    ButtonCorner.CornerRadius = UDim.new(0, 6)
+    ButtonCorner.Parent = ColorButton
+    
+    local currentColor = defaultColor
+    
+    local function openColorPicker()
+        -- This is a simplified color picker
+        -- You can extend this with a proper color picker UI
+        local newColor = Color3.new(math.random(), math.random(), math.random())
+        ColorButton.BackgroundColor3 = newColor
+        currentColor = newColor
+        
+        if callback then
+            callback(newColor)
+        end
+    end
+    
+    ColorButton.MouseButton1Click:Connect(openColorPicker)
+    
+    -- Store element
+    local elementId = #self.Elements + 1
+    self.Elements[elementId] = {
+        Type = "ColorPicker",
+        Name = name,
+        Get = function() return currentColor end,
+        Set = function(color)
+            ColorButton.BackgroundColor3 = color
+            currentColor = color
+            if callback then
+                callback(color)
+            end
+        end
+    }
+    
+    return self.Elements[elementId]
+end
+
+-- ====================
+-- ESP SYSTEM
+-- ====================
+
+SwiftHub.ESP = {
+    Instances = {},
+    Drawings = {},
+    Enabled = false,
+    
+    CreateDrawing = function(self, type, properties)
+        local drawing = Drawing.new(type)
+        for prop, value in pairs(properties) do
+            drawing[prop] = value
+        end
+        return drawing
+    end,
+    
+    ClearESP = function(self, player)
+        if self.Instances[player] then
+            for _, drawing in pairs(self.Instances[player]) do
+                if drawing and drawing.Remove then
+                    drawing:Remove()
+                end
+            end
+            self.Instances[player] = nil
+        end
+    end,
+    
+    ClearAllESP = function(self)
+        for player, drawings in pairs(self.Instances) do
+            self:ClearESP(player)
+        end
+        self.Instances = {}
+    end,
+    
+    UpdateESP = function(self)
+        if not self.Enabled then
+            self:ClearAllESP()
+            return
+        end
+        
+        -- Clear old ESP for players no longer in game
+        for player, _ in pairs(self.Instances) do
+            if not Players:FindFirstChild(player.Name) then
+                self:ClearESP(player)
+            end
+        end
+        
+        -- Draw ESP for all players
+        for _, player in ipairs(Players:GetPlayers()) do
+            local character = player.Character
+            if player ~= LocalPlayer and character then
+                -- Add your ESP drawing logic here
+                -- Example: self:DrawBox(player, character)
+            end
+        end
+    end,
+    
+    Enable = function(self)
+        self.Enabled = true
+    end,
+    
+    Disable = function(self)
+        self.Enabled = false
+        self:ClearAllESP()
+    end,
+    
+    Toggle = function(self)
+        self.Enabled = not self.Enabled
+        if not self.Enabled then
+            self:ClearAllESP()
+        end
+        return self.Enabled
+    end
+}
+
+-- ====================
+-- CORE UI CREATION
+-- ====================
+
+function SwiftHub:CreateUI()
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "SwiftHub"
+    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    ScreenGui.Parent = CoreGui
+
+    local MainFrame = Instance.new("Frame")
+    MainFrame.Name = "MainFrame"
+    MainFrame.Size = UDim2.new(0, 500, 0, 600)
+    MainFrame.Position = UDim2.new(0.5, -250, 0.5, -300)
+    MainFrame.BackgroundColor3 = SwiftHub.Themes.Background
+    MainFrame.BackgroundTransparency = 0.1
+    MainFrame.BorderSizePixel = 0
+    MainFrame.Visible = false
+    MainFrame.Parent = ScreenGui
+    
+    local UICorner = Instance.new("UICorner")
+    UICorner.CornerRadius = UDim.new(0, 8)
+    UICorner.Parent = MainFrame
+    
+    local DropShadow = Instance.new("ImageLabel")
+    DropShadow.Name = "DropShadow"
+    DropShadow.Size = UDim2.new(1, 20, 1, 20)
+    DropShadow.Position = UDim2.new(0, -10, 0, -10)
+    DropShadow.BackgroundTransparency = 1
+    DropShadow.Image = "rbxassetid://1316045217"
+    DropShadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
+    DropShadow.ImageTransparency = 0.5
+    DropShadow.ScaleType = Enum.ScaleType.Slice
+    DropShadow.SliceCenter = Rect.new(10, 10, 118, 118)
+    DropShadow.ZIndex = 0
+    DropShadow.Parent = MainFrame
+
+    local Header = Instance.new("Frame")
+    Header.Name = "Header"
+    Header.Size = UDim2.new(1, 0, 0, 50)
+    Header.BackgroundTransparency = 1
+    Header.Parent = MainFrame
+    
+    local Title = Instance.new("TextLabel")
+    Title.Name = "Title"
+    Title.Size = UDim2.new(0, 200, 1, 0)
+    Title.Position = UDim2.new(0, 20, 0, 0)
+    Title.BackgroundTransparency = 1
+    Title.Text = "SWIFT HUB"
+    Title.TextColor3 = SwiftHub.Themes.Accent
+    Title.TextSize = 24
+    Title.Font = Enum.Font.GothamBold
+    Title.TextXAlignment = Enum.TextXAlignment.Left
+    Title.Parent = Header
+    
+    local Subtitle = Instance.new("TextLabel")
+    Subtitle.Name = "Subtitle"
+    Subtitle.Size = UDim2.new(0, 200, 0, 20)
+    Subtitle.Position = UDim2.new(0, 20, 0, 30)
+    Subtitle.BackgroundTransparency = 1
+    Subtitle.Text = "modular ui framework • v2.0"
+    Subtitle.TextColor3 = SwiftHub.Themes.SubText
+    Subtitle.TextSize = 14
+    Subtitle.Font = Enum.Font.Gotham
+    Subtitle.TextXAlignment = Enum.TextXAlignment.Left
+    Subtitle.Parent = Header
+    
+    local CloseButton = Instance.new("TextButton")
+    CloseButton.Name = "CloseButton"
+    CloseButton.Size = UDim2.new(0, 30, 0, 30)
+    CloseButton.Position = UDim2.new(1, -40, 0, 10)
+    CloseButton.BackgroundColor3 = SwiftHub.Themes.Secondary
+    CloseButton.Text = "×"
+    CloseButton.TextColor3 = SwiftHub.Themes.Text
+    CloseButton.TextSize = 24
+    CloseButton.Font = Enum.Font.GothamBold
+    CloseButton.Parent = Header
+    
+    local CloseCorner = Instance.new("UICorner")
+    CloseCorner.CornerRadius = UDim.new(1, 0)
+    CloseCorner.Parent = CloseButton
+
+    local TabContainer = Instance.new("Frame")
+    TabContainer.Name = "TabContainer"
+    TabContainer.Size = UDim2.new(1, -40, 0, 30)
+    TabContainer.Position = UDim2.new(0, 20, 0, 60)
+    TabContainer.BackgroundTransparency = 1
+    TabContainer.Parent = MainFrame
+    
+    local TabListLayout = Instance.new("UIListLayout")
+    TabListLayout.FillDirection = Enum.FillDirection.Horizontal
+    TabListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+    TabListLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+    TabListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    TabListLayout.Padding = UDim.new(0, 10)
+    TabListLayout.Parent = TabContainer
+
+    SwiftHub.TabButtons = {}
+    SwiftHub.TabFrames = {}
+    
+    local TabFrameContainer = Instance.new("Frame")
+    TabFrameContainer.Name = "TabFrameContainer"
+    TabFrameContainer.Size = UDim2.new(1, -40, 1, -150)
+    TabFrameContainer.Position = UDim2.new(0, 20, 0, 100)
+    TabFrameContainer.BackgroundTransparency = 1
+    TabFrameContainer.Parent = MainFrame
+    
+    local KeybindToggle = Instance.new("TextButton")
+    KeybindToggle.Name = "KeybindToggle"
+    KeybindToggle.Size = UDim2.new(0, 120, 0, 30)
+    KeybindToggle.Position = UDim2.new(0.5, -60, 1, -40)
+    KeybindToggle.BackgroundColor3 = SwiftHub.Themes.Primary
+    KeybindToggle.Text = "Toggle UI: RCTRL"
+    KeybindToggle.TextColor3 = SwiftHub.Themes.Text
+    KeybindToggle.TextSize = 14
+    KeybindToggle.Font = Enum.Font.GothamSemibold
+    KeybindToggle.Parent = MainFrame
+    
+    local KeybindCorner = Instance.new("UICorner")
+    KeybindCorner.CornerRadius = UDim.new(0, 6)
+    KeybindCorner.Parent = KeybindToggle
+
+    SwiftHub.UI = {
+        ScreenGui = ScreenGui,
+        MainFrame = MainFrame,
+        Header = Header,
+        CloseButton = CloseButton,
+        KeybindToggle = KeybindToggle,
+        TabContainer = TabContainer,
+        TabFrameContainer = TabFrameContainer
+    }
+    
+    CloseButton.MouseButton1Click:Connect(function()
+        SwiftHub:ToggleUI()
     end)
     
-    return window
+    KeybindToggle.MouseButton1Click:Connect(function()
+        SwiftHub:ToggleUI()
+    end)
+    
+    return ScreenGui
 end
 
--- Export the library
+-- Add a tab to the UI
+function SwiftHub:AddTab(name)
+    if self.TabFrames[name] then return self.TabFrames[name] end
+    
+    -- Create tab button
+    local TabButton = Instance.new("TextButton")
+    TabButton.Name = name .. "Tab"
+    TabButton.Size = UDim2.new(0, 100, 1, 0)
+    TabButton.BackgroundColor3 = #self.TabButtons == 0 and self.Themes.Primary or self.Themes.Secondary
+    TabButton.Text = name
+    TabButton.TextColor3 = #self.TabButtons == 0 and self.Themes.Text or self.Themes.SubText
+    TabButton.TextSize = 14
+    TabButton.Font = Enum.Font.GothamSemibold
+    TabButton.LayoutOrder = #self.TabButtons + 1
+    TabButton.AutoButtonColor = false
+    TabButton.Parent = self.UI.TabContainer
+    
+    local TabCorner = Instance.new("UICorner")
+    TabCorner.CornerRadius = UDim.new(0, 6)
+    TabCorner.Parent = TabButton
+    
+    -- Create tab frame
+    local TabFrame = Instance.new("ScrollingFrame")
+    TabFrame.Name = name .. "Frame"
+    TabFrame.Size = UDim2.new(1, 0, 1, 0)
+    TabFrame.BackgroundTransparency = 1
+    TabFrame.ScrollBarThickness = 3
+    TabFrame.ScrollBarImageColor3 = self.Themes.Border
+    TabFrame.Visible = #self.TabFrames == 0
+    TabFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    TabFrame.Parent = self.UI.TabFrameContainer
+    
+    local TabList = Instance.new("UIListLayout")
+    TabList.SortOrder = Enum.SortOrder.LayoutOrder
+    TabList.Padding = UDim.new(0, 10)
+    TabList.Parent = TabFrame
+    
+    TabList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        TabFrame.CanvasSize = UDim2.new(0, 0, 0, TabList.AbsoluteContentSize.Y + 10)
+    end)
+    
+    TabButton.MouseButton1Click:Connect(function()
+        self:SwitchTab(name)
+    end)
+    
+    self.TabButtons[name] = TabButton
+    self.TabFrames[name] = TabFrame
+    
+    -- Create tab data
+    self:CreateTab(name)
+    
+    return TabFrame
+end
+
+-- Switch between tabs
+function SwiftHub:SwitchTab(tabName)
+    for name, button in pairs(self.TabButtons) do
+        if name == tabName then
+            button.BackgroundColor3 = self.Themes.Primary
+            button.TextColor3 = self.Themes.Text
+        else
+            button.BackgroundColor3 = self.Themes.Secondary
+            button.TextColor3 = self.Themes.SubText
+        end
+    end
+    
+    for name, frame in pairs(self.TabFrames) do
+        frame.Visible = (name == tabName)
+    end
+end
+
+-- Toggle UI visibility
+function SwiftHub:ToggleUI()
+    if not self.UI then return end
+    
+    self.Config.Open = not self.Config.Open
+    self.UI.MainFrame.Visible = self.Config.Open
+    
+    if self.Config.Open then
+        self.UI.MainFrame.BackgroundTransparency = 1
+        TweenService:Create(self.UI.MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            BackgroundTransparency = 0.1
+        }):Play()
+    end
+end
+
+-- ====================
+-- EXAMPLE USAGE
+-- ====================
+
+function SwiftHub:CreateExampleTabs()
+    -- Example: Combat Tab
+    local CombatTab = self:AddTab("Combat")
+    
+    self:CreateSection(CombatTab, "AIMBOT")
+    local aimbotToggle = self:CreateToggle(CombatTab, "Enable Aimbot", false, function(state)
+        print("Aimbot:", state)
+    end)
+    
+    local aimbotKey = self:CreateToggleWithKeybind(CombatTab, "Aimbot Key", false, Enum.UserInputType.MouseButton2, function(state, key)
+        print("Aimbot Key:", state, key)
+    end)
+    
+    local smoothSlider = self:CreateSlider(CombatTab, "Smoothing", 0, 1, 0.2, function(value)
+        print("Smoothing:", value)
+    end)
+    
+    self:CreateSection(CombatTab, "TRIGGERBOT")
+    self:CreateToggle(CombatTab, "Triggerbot", false, function(state)
+        print("Triggerbot:", state)
+    end)
+    
+    -- Example: Visuals Tab
+    local VisualsTab = self:AddTab("Visuals")
+    
+    self:CreateSection(VisualsTab, "ESP")
+    local espToggle = self:CreateToggle(VisualsTab, "Enable ESP", false, function(state)
+        self.ESP.Enabled = state
+        print("ESP:", state)
+    end)
+    
+    self:CreateToggle(VisualsTab, "Box ESP", true, function(state)
+        print("Box ESP:", state)
+    end)
+    
+    self:CreateToggle(VisualsTab, "Tracers", true, function(state)
+        print("Tracers:", state)
+    end)
+    
+    self:CreateToggle(VisualsTab, "Names", true, function(state)
+        print("Names:", state)
+    end)
+    
+    self:CreateSection(VisualsTab, "CHAMS")
+    self:CreateToggle(VisualsTab, "Chams", false, function(state)
+        print("Chams:", state)
+    end)
+    
+    -- Example: Misc Tab
+    local MiscTab = self:AddTab("Misc")
+    
+    self:CreateSection(MiscTab, "MOVEMENT")
+    self:CreateButton(MiscTab, "Teleport to Spawn", function()
+        print("Teleporting to spawn...")
+    end)
+    
+    local speedSlider = self:CreateSlider(MiscTab, "WalkSpeed", 16, 100, 16, function(value)
+        print("WalkSpeed:", value)
+    end)
+    
+    self:CreateSection(MiscTab, "UTILITIES")
+    self:CreateDropdown(MiscTab, "Auto Farm", {"Off", "Coins", "Gems", "Both"}, "Off", function(option)
+        print("Auto Farm:", option)
+    end)
+    
+    local colorPicker = self:CreateColorPicker(MiscTab, "ESP Color", Color3.fromRGB(255, 0, 0), function(color)
+        print("ESP Color:", color)
+    end)
+    
+    self:CreateSection(MiscTab, "INFORMATION")
+    self:CreateLabel(MiscTab, "Welcome to Swift Hub!")
+    self:CreateLabel(MiscTab, "A modular UI framework for Roblox")
+    
+    -- Example: Settings Tab
+    local SettingsTab = self:AddTab("Settings")
+    
+    self:CreateSection(SettingsTab, "CONFIGURATION")
+    local uiKeybind = self:CreateKeybind(SettingsTab, "UI Toggle Key", Enum.KeyCode.RightControl, function(key)
+        self.Config.Keybind = key
+        self.UI.KeybindToggle.Text = "Toggle UI: " .. tostring(key.Name):gsub("Enum.KeyCode.", "")
+    end)
+    
+    self:CreateToggle(SettingsTab, "Rainbow Mode", false, function(state)
+        print("Rainbow Mode:", state)
+    end)
+    
+    self:CreateButton(SettingsTab, "Save Config", function()
+        print("Configuration saved!")
+    end)
+    
+    self:CreateButton(SettingsTab, "Load Config", function()
+        print("Configuration loaded!")
+    end)
+    
+    self:CreateSection(SettingsTab, "ABOUT")
+    self:CreateLabel(SettingsTab, "Swift Hub v2.0")
+    self:CreateLabel(SettingsTab, "Created for modular UI development")
+end
+
+-- ====================
+-- INPUT HANDLING
+-- ====================
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    
+    -- UI toggle
+    if input.KeyCode == SwiftHub.Config.Keybind then
+        SwiftHub:ToggleUI()
+    end
+    
+    -- Keybind manager
+    if input.UserInputType == Enum.UserInputType.Keyboard then
+        SwiftHub.Keybinds.Pressed[input.KeyCode] = true
+        if SwiftHub.Keybinds.Active[input.KeyCode] then
+            SwiftHub.Keybinds.Active[input.KeyCode]()
+        end
+    elseif input.UserInputType == Enum.UserInputType.MouseButton1 or 
+           input.UserInputType == Enum.UserInputType.MouseButton2 then
+        SwiftHub.Keybinds.Pressed[input.UserInputType] = true
+        if SwiftHub.Keybinds.Active[input.UserInputType] then
+            SwiftHub.Keybinds.Active[input.UserInputType]()
+        end
+    end
+    
+    -- Keybind changing mode
+    if SwiftHub.Config.ChangingKeybind then
+        if input.KeyCode ~= Enum.KeyCode.Escape then
+            if SwiftHub.Config.CurrentKeybindToChange then
+                SwiftHub.Config.CurrentKeybindToChange:SetKey(input.KeyCode)
+            end
+        end
+        SwiftHub.Config.ChangingKeybind = false
+        SwiftHub.Config.CurrentKeybindToChange = nil
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input, gameProcessed)
+    if input.UserInputType == Enum.UserInputType.Keyboard then
+        SwiftHub.Keybinds.Pressed[input.KeyCode] = false
+    elseif input.UserInputType == Enum.UserInputType.MouseButton1 or 
+           input.UserInputType == Enum.UserInputType.MouseButton2 then
+        SwiftHub.Keybinds.Pressed[input.UserInputType] = false
+    end
+end)
+
+-- ====================
+-- INITIALIZATION
+-- ====================
+
+function SwiftHub:Init()
+    self:CreateUI()
+    self:CreateExampleTabs() -- Remove this line if you don't want example tabs
+    
+    -- Start ESP update loop
+    RunService.RenderStepped:Connect(function()
+        self.ESP:UpdateESP()
+    end)
+    
+    print("======================================")
+    print("🚀 Swift Hub v2.0 - Modular UI Framework")
+    print("======================================")
+    print("📌 Press RIGHT CONTROL to toggle UI")
+    print("🎯 Features:")
+    print("   - Create tabs dynamically")
+    print("   - Toggle buttons with/without keybinds")
+    print("   - Sliders, buttons, labels")
+    print("   - Dropdowns and color pickers")
+    print("   - Built-in ESP system")
+    print("   - Rainbow color generator")
+    print("======================================")
+    print("💡 Usage:")
+    print("   local CombatTab = SwiftHub:AddTab('Combat')")
+    print("   SwiftHub:CreateToggle(CombatTab, 'Aimbot', false, callback)")
+    print("   SwiftHub:CreateSlider(CombatTab, 'FOV', 10, 120, 90, callback)")
+    print("======================================")
+    
+    return self
+end
+
+-- Start the hub
+SwiftHub:Init()
+
+-- Export for external use
 return SwiftHub
