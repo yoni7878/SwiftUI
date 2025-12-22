@@ -717,7 +717,7 @@ function SwiftHub:CreateDropdown(parent, name, options, default, callback)
             TweenService:Create(OptionsFrame, TweenInfo.new(0.3), {
                 Size = UDim2.new(1, 0, 0, 0)
             }):Play()
-            wait(0.3)
+            task.wait(0.3)
             OptionsFrame.Visible = false
         end
     end
@@ -933,10 +933,11 @@ function SwiftHub:CreateUI()
     ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     ScreenGui.Parent = CoreGui
 
+    -- Make the main UI larger to accommodate more tabs
     local MainFrame = Instance.new("Frame")
     MainFrame.Name = "MainFrame"
-    MainFrame.Size = UDim2.new(0, 500, 0, 600)
-    MainFrame.Position = UDim2.new(0.5, -250, 0.5, -300)
+    MainFrame.Size = UDim2.new(0, 550, 0, 650) -- Increased width and height
+    MainFrame.Position = UDim2.new(0.5, -275, 0.5, -325) -- Centered with new size
     MainFrame.BackgroundColor3 = SwiftHub.Themes.Background
     MainFrame.BackgroundTransparency = 0.1
     MainFrame.BorderSizePixel = 0
@@ -1005,12 +1006,21 @@ function SwiftHub:CreateUI()
     CloseCorner.CornerRadius = UDim.new(1, 0)
     CloseCorner.Parent = CloseButton
 
+    -- Create a scrolling frame for tabs
+    local TabScrollFrame = Instance.new("ScrollingFrame")
+    TabScrollFrame.Name = "TabScrollFrame"
+    TabScrollFrame.Size = UDim2.new(1, -40, 0, 40) -- Taller to show 2 rows if needed
+    TabScrollFrame.Position = UDim2.new(0, 20, 0, 60)
+    TabScrollFrame.BackgroundTransparency = 1
+    TabScrollFrame.ScrollBarThickness = 0
+    TabScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    TabScrollFrame.Parent = MainFrame
+    
     local TabContainer = Instance.new("Frame")
     TabContainer.Name = "TabContainer"
-    TabContainer.Size = UDim2.new(1, -40, 0, 30)
-    TabContainer.Position = UDim2.new(0, 20, 0, 60)
+    TabContainer.Size = UDim2.new(1, 0, 1, 0)
     TabContainer.BackgroundTransparency = 1
-    TabContainer.Parent = MainFrame
+    TabContainer.Parent = TabScrollFrame
     
     local TabListLayout = Instance.new("UIListLayout")
     TabListLayout.FillDirection = Enum.FillDirection.Horizontal
@@ -1019,14 +1029,28 @@ function SwiftHub:CreateUI()
     TabListLayout.SortOrder = Enum.SortOrder.LayoutOrder
     TabListLayout.Padding = UDim.new(0, 10)
     TabListLayout.Parent = TabContainer
+    
+    -- Automatically resize scroll frame when tabs are added
+    TabListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        local contentWidth = TabListLayout.AbsoluteContentSize.X
+        TabScrollFrame.CanvasSize = UDim2.new(0, contentWidth, 0, 0)
+        
+        -- Enable scrolling if tabs exceed width
+        if contentWidth > TabScrollFrame.AbsoluteSize.X then
+            TabScrollFrame.ScrollBarThickness = 3
+            TabScrollFrame.ScrollBarImageColor3 = SwiftHub.Themes.Border
+        else
+            TabScrollFrame.ScrollBarThickness = 0
+        end
+    end)
 
     SwiftHub.TabButtons = {}
     SwiftHub.TabFrames = {}
     
     local TabFrameContainer = Instance.new("Frame")
     TabFrameContainer.Name = "TabFrameContainer"
-    TabFrameContainer.Size = UDim2.new(1, -40, 1, -150)
-    TabFrameContainer.Position = UDim2.new(0, 20, 0, 100)
+    TabFrameContainer.Size = UDim2.new(1, -40, 1, -180) -- Adjusted for taller tab area
+    TabFrameContainer.Position = UDim2.new(0, 20, 0, 110) -- Adjusted position
     TabFrameContainer.BackgroundTransparency = 1
     TabFrameContainer.Parent = MainFrame
     
@@ -1052,6 +1076,7 @@ function SwiftHub:CreateUI()
         CloseButton = CloseButton,
         KeybindToggle = KeybindToggle,
         TabContainer = TabContainer,
+        TabScrollFrame = TabScrollFrame,
         TabFrameContainer = TabFrameContainer
     }
     
@@ -1066,18 +1091,21 @@ function SwiftHub:CreateUI()
     return ScreenGui
 end
 
--- Add a tab to the UI
+-- Add a tab to the UI with better sizing
 function SwiftHub:AddTab(name)
     if self.TabFrames[name] then return self.TabFrames[name] end
+    
+    -- Calculate dynamic tab width based on name length
+    local tabWidth = math.min(100, math.max(80, string.len(name) * 8 + 20))
     
     -- Create tab button
     local TabButton = Instance.new("TextButton")
     TabButton.Name = name .. "Tab"
-    TabButton.Size = UDim2.new(0, 100, 1, 0)
+    TabButton.Size = UDim2.new(0, tabWidth, 0, 30) -- Fixed height, dynamic width
     TabButton.BackgroundColor3 = #self.TabButtons == 0 and self.Themes.Primary or self.Themes.Secondary
     TabButton.Text = name
     TabButton.TextColor3 = #self.TabButtons == 0 and self.Themes.Text or self.Themes.SubText
-    TabButton.TextSize = 14
+    TabButton.TextSize = 13 -- Slightly smaller font
     TabButton.Font = Enum.Font.GothamSemibold
     TabButton.LayoutOrder = #self.TabButtons + 1
     TabButton.AutoButtonColor = false
@@ -1109,6 +1137,27 @@ function SwiftHub:AddTab(name)
     
     TabButton.MouseButton1Click:Connect(function()
         self:SwitchTab(name)
+    end)
+    
+    -- Hover effects for tab button
+    TabButton.MouseEnter:Connect(function()
+        if TabButton.BackgroundColor3 ~= self.Themes.Primary then
+            TweenService:Create(TabButton, TweenInfo.new(0.2), {
+                BackgroundColor3 = Color3.fromRGB(
+                    math.floor(self.Themes.Secondary.R * 255 * 1.2),
+                    math.floor(self.Themes.Secondary.G * 255 * 1.2),
+                    math.floor(self.Themes.Secondary.B * 255 * 1.2)
+                )
+            }):Play()
+        end
+    end)
+    
+    TabButton.MouseLeave:Connect(function()
+        if TabButton.BackgroundColor3 ~= self.Themes.Primary then
+            TweenService:Create(TabButton, TweenInfo.new(0.2), {
+                BackgroundColor3 = self.Themes.Secondary
+            }):Play()
+        end
     end)
     
     self.TabButtons[name] = TabButton
@@ -1150,109 +1199,6 @@ function SwiftHub:ToggleUI()
             BackgroundTransparency = 0.1
         }):Play()
     end
-end
-
--- ====================
--- EXAMPLE USAGE
--- ====================
-
-function SwiftHub:CreateExampleTabs()
-    -- Example: Combat Tab
-    local CombatTab = self:AddTab("Combat")
-    
-    self:CreateSection(CombatTab, "AIMBOT")
-    local aimbotToggle = self:CreateToggle(CombatTab, "Enable Aimbot", false, function(state)
-        print("Aimbot:", state)
-    end)
-    
-    local aimbotKey = self:CreateToggleWithKeybind(CombatTab, "Aimbot Key", false, Enum.UserInputType.MouseButton2, function(state, key)
-        print("Aimbot Key:", state, key)
-    end)
-    
-    local smoothSlider = self:CreateSlider(CombatTab, "Smoothing", 0, 1, 0.2, function(value)
-        print("Smoothing:", value)
-    end)
-    
-    self:CreateSection(CombatTab, "TRIGGERBOT")
-    self:CreateToggle(CombatTab, "Triggerbot", false, function(state)
-        print("Triggerbot:", state)
-    end)
-    
-    -- Example: Visuals Tab
-    local VisualsTab = self:AddTab("Visuals")
-    
-    self:CreateSection(VisualsTab, "ESP")
-    local espToggle = self:CreateToggle(VisualsTab, "Enable ESP", false, function(state)
-        self.ESP.Enabled = state
-        print("ESP:", state)
-    end)
-    
-    self:CreateToggle(VisualsTab, "Box ESP", true, function(state)
-        print("Box ESP:", state)
-    end)
-    
-    self:CreateToggle(VisualsTab, "Tracers", true, function(state)
-        print("Tracers:", state)
-    end)
-    
-    self:CreateToggle(VisualsTab, "Names", true, function(state)
-        print("Names:", state)
-    end)
-    
-    self:CreateSection(VisualsTab, "CHAMS")
-    self:CreateToggle(VisualsTab, "Chams", false, function(state)
-        print("Chams:", state)
-    end)
-    
-    -- Example: Misc Tab
-    local MiscTab = self:AddTab("Misc")
-    
-    self:CreateSection(MiscTab, "MOVEMENT")
-    self:CreateButton(MiscTab, "Teleport to Spawn", function()
-        print("Teleporting to spawn...")
-    end)
-    
-    local speedSlider = self:CreateSlider(MiscTab, "WalkSpeed", 16, 100, 16, function(value)
-        print("WalkSpeed:", value)
-    end)
-    
-    self:CreateSection(MiscTab, "UTILITIES")
-    self:CreateDropdown(MiscTab, "Auto Farm", {"Off", "Coins", "Gems", "Both"}, "Off", function(option)
-        print("Auto Farm:", option)
-    end)
-    
-    local colorPicker = self:CreateColorPicker(MiscTab, "ESP Color", Color3.fromRGB(255, 0, 0), function(color)
-        print("ESP Color:", color)
-    end)
-    
-    self:CreateSection(MiscTab, "INFORMATION")
-    self:CreateLabel(MiscTab, "Welcome to Swift Hub!")
-    self:CreateLabel(MiscTab, "A modular UI framework for Roblox")
-    
-    -- Example: Settings Tab
-    local SettingsTab = self:AddTab("Settings")
-    
-    self:CreateSection(SettingsTab, "CONFIGURATION")
-    local uiKeybind = self:CreateKeybind(SettingsTab, "UI Toggle Key", Enum.KeyCode.RightControl, function(key)
-        self.Config.Keybind = key
-        self.UI.KeybindToggle.Text = "Toggle UI: " .. tostring(key.Name):gsub("Enum.KeyCode.", "")
-    end)
-    
-    self:CreateToggle(SettingsTab, "Rainbow Mode", false, function(state)
-        print("Rainbow Mode:", state)
-    end)
-    
-    self:CreateButton(SettingsTab, "Save Config", function()
-        print("Configuration saved!")
-    end)
-    
-    self:CreateButton(SettingsTab, "Load Config", function()
-        print("Configuration loaded!")
-    end)
-    
-    self:CreateSection(SettingsTab, "ABOUT")
-    self:CreateLabel(SettingsTab, "Swift Hub v2.0")
-    self:CreateLabel(SettingsTab, "Created for modular UI development")
 end
 
 -- ====================
@@ -1308,7 +1254,6 @@ end)
 
 function SwiftHub:Init()
     self:CreateUI()
-    self:CreateExampleTabs() -- Remove this line if you don't want example tabs
     
     -- Start ESP update loop
     RunService.RenderStepped:Connect(function()
@@ -1321,6 +1266,7 @@ function SwiftHub:Init()
     print("📌 Press RIGHT CONTROL to toggle UI")
     print("🎯 Features:")
     print("   - Create tabs dynamically")
+    print("   - Tabs automatically scroll when needed")
     print("   - Toggle buttons with/without keybinds")
     print("   - Sliders, buttons, labels")
     print("   - Dropdowns and color pickers")
